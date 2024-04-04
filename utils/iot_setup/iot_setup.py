@@ -1,5 +1,6 @@
 import random
 import datetime
+import sys
 
 def get_config(spark, catalog=None, schema='iot_distributed_pandas'):
     current_user = spark.sql('select current_user()').collect()[0][0].split('@')[0].replace('.', '_')
@@ -32,12 +33,19 @@ def get_config(spark, catalog=None, schema='iot_distributed_pandas'):
     }
 
 def reset_tables(spark, config, dbutils, drop_schema=False, create_schema=True):
-    if drop_schema:
-        spark.sql(f"drop schema if exists {config['catalog']}.{config['schema']} CASCADE")
-    if create_schema:
-        spark.sql(f"create schema {config['catalog']}.{config['schema']}")
-    volume_fqp = '.'.join(config['volume'].split('/')[2:])
-    spark.sql(f"create volume {volume_fqp}")
+    try:
+      if drop_schema:
+          spark.sql(f"drop schema if exists {config['catalog']}.{config['schema']} CASCADE")
+      if create_schema:
+          spark.sql(f"create schema {config['catalog']}.{config['schema']}")
+      volume_fqp = '.'.join(config['volume'].split('/')[2:])
+      spark.sql(f"create volume {volume_fqp}")
+    except Exception as e:
+        if 'NO_SUCH_CATALOG_EXCEPTION' in str(e):
+            spark.sql(f'create catalog {config["catalog"]}')
+            reset_tables(spark, config, dbutils)
+        else:
+            raise
 
 dgconfig = {
     "shared": {
