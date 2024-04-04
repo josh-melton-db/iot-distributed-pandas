@@ -119,17 +119,15 @@ class Autoencoder(pl.LightningModule):
         return decoded
 
     def training_step(self, batch, batch_idx):
-        # Extract the target data using the target column name
         target = batch[self.target_column].float()
-        # Extract the features by excluding the target column
         features = torch.stack([batch[key] for key in batch.keys() if key != self.target_column], dim=1).float()
-        # Forward pass to get the reconstructed features
+        features = torch.clamp(features, 0, 1)
         reconstructed = self(features)
-        # Ensure the reconstructed output is the same shape as the features
         reconstructed = reconstructed.view_as(features)
-        # Calculate the loss using binary cross-entropy
+        if not torch.all(target.ge(0) & target.le(1)):
+            raise ValueError("All elements of target should be between 0 and 1")
+        
         loss = F.binary_cross_entropy(reconstructed, features)
-        # Log the training loss
         self.log('train_loss', loss, on_step=True, on_epoch=True, logger=True)
         return loss
 
@@ -165,7 +163,7 @@ data_module = DeltaDataModule(config['train_table'], config['test_table'])
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC Let's try running our train_model function on a single node by simply passing it the delta module and the input size
+# MAGIC Let's try running our train_model function on a single node by simply passing it the delta module and the input size. If you check the "metrics" tab of your cluster, you'll see utilization ramp up on the driver but not your workers (if you have any).
 
 # COMMAND ----------
 
@@ -175,7 +173,7 @@ model = train_model(data_module, input_size)
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC If we have more data than a single node can handle, we can try distributing the training run across our node. `num_processes` is the parameter that controls the level of parallelism - we can set this to the number of GPUs or nodes our cluster has. We highly recommend starting with single node training runs and only introducing the complexity of distributed deep learning if those don't work. If you're using the default settings and a typical cluster, the single node training run will most likely be faster in this instance since it doesn't incur the overhead of communication between nodes. However, if you're working against constraints such as a massive dataset that won't fit into memory, this can be a more efficient approach
+# MAGIC If we have more data than a single node can handle, we can try distributing the training run across our node with [PyTorch Distributor](https://docs.databricks.com/en/machine-learning/train-model/distributed-training/spark-pytorch-distributor.html). The `num_processes` parameter controls the level of parallelism - we can set this to the number of GPUs or nodes our cluster has. We highly recommend starting with single node training runs and only introducing the complexity of distributed deep learning if those don't work. If you're using the default settings and a typical cluster, the single node training run will most likely be faster in this instance since it doesn't incur the overhead of communication between nodes. However, if you're working against constraints such as a massive dataset that won't fit into memory, this can be a more efficient approach. If you set `num_processes` appropriately, your metrics tab should now show utilization across workers and the driver.
 
 # COMMAND ----------
 
