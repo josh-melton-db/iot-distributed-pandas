@@ -26,7 +26,8 @@ def get_config(spark, catalog=None, schema='iot_distributed_pandas'):
         'test_table' : f'{volume}/test_table',  
         'log_path' : f'{volume}/pl_training_logger',
         'ckpt_path' : f'{volume}/pl_training_checkpoint',
-        'experiment_path' : f'/Users/{username}/distributed_pl',
+        'pl_experiment_path' : f'/Users/{username}/distributed_pl',
+        'ml_experiment_path' : f'/Users/{username}/mlflow_intro',
         'model_name' : f'device_defect_{current_user}'
     }
 

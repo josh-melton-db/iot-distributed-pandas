@@ -15,7 +15,7 @@
 # DBTITLE 1,Setup
 from utils.iot_setup import get_config
 
-config = get_config(spark)
+config = get_config(spark, catalog='default')
 BATCH_SIZE = 2048
 EPOCHS = 20
 
@@ -96,27 +96,41 @@ from pytorch_lightning.loggers import MLFlowLogger
 from pytorch_lightning.callbacks import EarlyStopping
 
 
-class BinaryClassifier(pl.LightningModule):
-    def __init__(self, target_column, input_size, hidden_size=64):
+class Autoencoder(pl.LightningModule):
+    def __init__(self, input_size, target_column, hidden_size=64, latent_dim=32):
         super().__init__()
         self.target_column = target_column
-        self.fc1 = nn.Linear(input_size, hidden_size)
-        self.fc2 = nn.Linear(hidden_size, 32)
-        self.fc3 = nn.Linear(32, 1)
+        self.encoder = nn.Sequential(
+            nn.Linear(input_size, hidden_size),
+            nn.ReLU(),
+            nn.Linear(hidden_size, latent_dim),
+            nn.ReLU()
+        )
+        self.decoder = nn.Sequential(
+            nn.Linear(latent_dim, hidden_size),
+            nn.ReLU(),
+            nn.Linear(hidden_size, input_size),
+            nn.Sigmoid()  # Ensure input features are scaled between 0 and 1
+        )
 
     def forward(self, x):
-        x = F.relu(self.fc1(x))
-        x = F.relu(self.fc2(x))
-        x = torch.sigmoid(self.fc3(x))
-        return x
+        encoded = self.encoder(x)
+        decoded = self.decoder(encoded)
+        return decoded
 
     def training_step(self, batch, batch_idx):
+        # Extract the target data using the target column name
         target = batch[self.target_column].float()
-        feature_keys = [key for key in batch.keys() if key != self.target_column]
-        features = torch.stack([batch[key] for key in feature_keys], dim=1).float()
-        predictions = self(features) 
-        loss = F.binary_cross_entropy(predictions, target.view(-1, 1))
-        self.log('train_loss', loss, on_step=True, on_epoch=True, logger=True) # logs to MLflow
+        # Extract the features by excluding the target column
+        features = torch.stack([batch[key] for key in batch.keys() if key != self.target_column], dim=1).float()
+        # Forward pass to get the reconstructed features
+        reconstructed = self(features)
+        # Ensure the reconstructed output is the same shape as the features
+        reconstructed = reconstructed.view_as(features)
+        # Calculate the loss using binary cross-entropy
+        loss = F.binary_cross_entropy(reconstructed, features)
+        # Log the training loss
+        self.log('train_loss', loss, on_step=True, on_epoch=True, logger=True)
         return loss
 
     def configure_optimizers(self):
@@ -132,11 +146,11 @@ def train_model(dataloader, input_size, num_gpus=1, single_node=True):
     os.environ['DATABRICKS_HOST'] = db_host
     os.environ['DATABRICKS_TOKEN'] = db_token
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
-    model = BinaryClassifier('defect', input_size)
+    model = Autoencoder(input_size, 'defect')
     model.to(device)
     mlflow.autolog(disable=True)
-    mlflow.set_experiment(config['experiment_path'])
-    logger = MLFlowLogger(experiment_name=config['experiment_path'])
+    mlflow.set_experiment(config['pl_experiment_path'])
+    logger = MLFlowLogger(experiment_name=config['pl_experiment_path'])
     early_stopping = EarlyStopping(monitor='train_loss', patience=3, mode='min', log_rank_zero_only=True)
     trainer = pl.Trainer(max_epochs=EPOCHS, logger=logger, callbacks=[early_stopping], default_root_dir=config['log_path'])
     trainer.fit(model, dataloader)

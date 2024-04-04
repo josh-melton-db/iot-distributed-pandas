@@ -1,17 +1,19 @@
 # Databricks notebook source
 # MAGIC %md
-# MAGIC # Parallel Pandas ML Techniques
+# MAGIC ### 4 Parallel Pandas ML Techniques
+# MAGIC
+# MAGIC Finally, the crux of what we set out to do - in this notebook, we'll outline how to distribute an end-to-end ML pipeline that uses all the libraries we're used to.
 
 # COMMAND ----------
 
 # DBTITLE 1,Import Config
 from utils.iot_setup import get_config
-config = get_config(spark)
+config = get_config(spark, catalog='default')
 
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC # Pandas + Spark
+# MAGIC ### Pandas + Spark
 # MAGIC So far we've used Pandas to run some single core, single threaded transformations on our data. If our data volume grows, we may want to run processes in parallel instead. Spark offers several approaches for applying familiar Pandas logic on top of the parallelism of Spark, including:
 # MAGIC - <a href="https://spark.apache.org/docs/latest/api/python/user_guide/pandas_on_spark/index.html">Pyspark Pandas</a>
 # MAGIC - <a href="https://spark.apache.org/docs/latest/api/python/reference/pyspark.sql/api/pyspark.sql.GroupedData.applyInPandas.html">Apply In Pandas</a>
@@ -132,7 +134,7 @@ rmse
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC # Hyperparameter tuning
+# MAGIC ### Hyperparameter tuning
 # MAGIC Now we've seen how to run ARIMA in parallel on a large dataset, but we haven't determined which hyperparameters (the "order" parameter) gives the best ARIMA model for our use case. We can explore the correct hyperparameters by using hyperopt, a framework where we can minimize the output of some function given a parameter space to explore as input. In our case, we'll turn the prediction and rmse calculations into our objective function, and use hyperopt to automatically and intelligently explore many values for the "order" hyperparameters.
 
 # COMMAND ----------
@@ -193,6 +195,7 @@ def train_with_arima(pdf: pd.DataFrame):
     rf.fit(X_train, y_train)
     return rf
 
+mlflow.set_experiment(config['ml_experiment_path'])
 mlflow.sklearn.autolog()
 with mlflow.start_run() as run:
     rf_model = train_with_arima(features_arima.where('device_id = 1').toPandas())
@@ -200,8 +203,16 @@ mlflow.sklearn.autolog(disable=True)
 
 # COMMAND ----------
 
+# MAGIC %md
+# MAGIC ### Custom MLflow Model
+# MAGIC Sometimes, logging models from default libraries doesn't cut it. For these cases we can use an MLflow [PythonModel](https://mlflow.org/docs/latest/python_api/mlflow.pyfunc.html#class-based-model) to define custom logic that provides value on top of standard out of the box models. For example, by logging the feature logic along with our model we mitigate a lot of potential headaches in productionization, such as online/offline skew. In this example, ensuring that our ARIMA model gets the appropriate optimal_order parameter also means we can create features in the same way our model was trained on. </br></br>
+# MAGIC
+# MAGIC Let's tie everything together from this notebook and log it all as a custom model in MLflow and use it to generate features and make predictions
+
+# COMMAND ----------
+
 # DBTITLE 1,Define Custom Model
-class ComboModel(mlflow.pyfunc.PythonModel):
+class FeaturesAndPredictionModel(mlflow.pyfunc.PythonModel):
     def __init__(self, defect_model=None, order=(1, 1, 1), ohe_list=[]):
         self.defect_model = defect_model
         self.order = order
@@ -244,6 +255,13 @@ class ComboModel(mlflow.pyfunc.PythonModel):
         features = self.add_rolling_density(features)
         features = self.forecast_arima(features)
         return features
+    
+    def train_model(self, pdf: pd.DataFrame):
+        X_train = pdf.drop('defect', axis=1)
+        y_train = pdf['defect']
+        rf = RandomForestClassifier(n_estimators=100) # We could run hyperopt for these hyperparameters too!
+        rf.fit(X_train, y_train)
+        return rf
 
     def predict(self, context, model_input):
         output = self.generate_features(model_input)
@@ -254,23 +272,26 @@ class ComboModel(mlflow.pyfunc.PythonModel):
 
 # COMMAND ----------
 
-# MAGIC %md
-# MAGIC By logging the feature logic along with our model we could eliminate a lot of potential headaches in productionalizing our model, such as online/offline skew. In this example, ensuring that our ARIMA model gets the appropriate optimal_order parameter means we can create features as our model expects them. Let's log this custom model to MLflow and use it to generate features and make predictions - we could also use a spark function to call our model in parallel as a Pandas UDF, like shown in the MLflow Run Artifacts Tab
-
-# COMMAND ----------
-
 # DBTITLE 1,Test Feature Generation
 ohe_list = [column for column in features_arima.columns if 'ohe' in column]
 optimal_order = (int(argmin['p']), int(argmin['d']), int(argmin['q']))
-combo_model = ComboModel(rf_model, optimal_order, ohe_list)
+combo_model = FeaturesAndPredictionModel(None, optimal_order, ohe_list)
 
-raw = spark.read.table(config['bronze_table']).drop('defect').limit(5).toPandas()
+raw = spark.read.table(config['bronze_table']).limit(5000).toPandas()
+features = combo_model.generate_features(raw)
+model = combo_model.train_model(features)
+combo_model.defect_model = model
 
 with mlflow.start_run() as run:
     mlflow.pyfunc.log_model('combo_model', python_model=combo_model, input_example=raw) 
 
 custom_model = mlflow.pyfunc.load_model(f'runs:/{run.info.run_id}/combo_model')
-display(custom_model.predict(raw)) # test that our model works for feature generation
+display(custom_model.predict(raw)) # test that our model works for feature generation and predictions
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC We could also use a [Spark UDF](https://mlflow.org/docs/latest/python_api/mlflow.pyfunc.html#mlflow.pyfunc.spark_udf) to call our model in parallel, like what's automatically shown in the MLflow Run Artifacts Tab, or use the distributed Pandas approaches from above to distribute the feature generation in the exact same way
 
 # COMMAND ----------
 

@@ -1,19 +1,17 @@
 # Databricks notebook source
 # MAGIC %md
-# MAGIC # Introduction
+# MAGIC ### 1 Data Exploration
+# MAGIC Welcome to Distributed Pandas for IOT Anomaly Detection! These notebooks will walk you through several approaches to running single node processes more efficiently (in parallel) on Databricks. This notebook outlines how to run existing Pandas commands, with some extra goodies from the Databricks notebook UI. This notebook is a prerequisite to the others.</br></br>
 # MAGIC
-# MAGIC Welcome to Distributed Pandas for IOT Anomaly Detection! </br></br>
-# MAGIC Please be sure to use an <a href="https://docs.databricks.com/en/machine-learning/index.html#create-a-cluster-using-databricks-runtime-ml">ML Runtime Cluster</a> with a recent Databricks Runtime. The dataset is small enough to run on a typical Databricks cluster, but if the demo is running slowly you can change the dgconfig dictionary passed to `generate_iot()` to lower the data volume. Note that the accelerator defaults to using a Unity Catalog Volume for checkpoints - you can alter this to dbfs if you're not on Unity Catalog. It does not reset the tables underneath the schema `iot_distributed_pandas` by default, so set `create_schema=False` or `drop_schema=True` in `reset_tables()` or change the catalog and schema names as arguments in `get_config()` if you run into naming conflicts.
-# MAGIC
-# MAGIC First we'll install the correct libraries, run the setup, and read our data. You can run cells via the UI or the "shift+enter" hotkey
+# MAGIC For our first step, we'll install the correct libraries, run the setup, and read our data. You can run cells via the UI or the "shift+enter" hotkey. See the instructions above or in the RUNME for any challenges
 
 # COMMAND ----------
 
 # DBTITLE 1,Run Setup
 from utils.iot_setup import get_config, reset_tables, generate_iot, dgconfig
 
-config = get_config(spark)
-reset_tables(spark, config, dbutils, drop_schema=True)
+config = get_config(spark, catalog="default") # Update catalog or schema arguments to change the data location
+reset_tables(spark, config, dbutils, drop_schema=True) 
 iot_data = generate_iot(spark, dgconfig) # Update dgconfig['shared']['num_rows'] to change the generated data volume
 iot_data.write.mode('overwrite').saveAsTable(config['bronze_table'])
 

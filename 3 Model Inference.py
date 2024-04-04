@@ -1,17 +1,21 @@
 # Databricks notebook source
 # MAGIC %md
-# MAGIC # Introduction
+# MAGIC ### 3 Model Inference
+# MAGIC
+# MAGIC In this notebook, we'll take a detour from training models and discuss how to leverage the models we've built in a simple, easy to manage way. Note that consumers of our models don't need to care about swapping in new versions of our model or the dependencies that come with it, we get that automatically with MLflow!</br></br>
+# MAGIC
+# MAGIC As before, make sure to configure the same catalog and run the first two notebooks before you run this one
 
 # COMMAND ----------
 
 # DBTITLE 1,Import Config
 from utils.iot_setup import get_config
-config = get_config(spark)
+config = get_config(spark, catalog='default')
 
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC # MLflow Batch Inference
+# MAGIC ### MLflow Batch Inference
 
 # COMMAND ----------
 
@@ -33,7 +37,7 @@ display(feature_data)
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC # MLflow Streaming Inference
+# MAGIC ### MLflow Streaming Inference
 
 # COMMAND ----------
 

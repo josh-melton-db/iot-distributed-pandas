@@ -1,17 +1,20 @@
 # Databricks notebook source
 # MAGIC %md
-# MAGIC # Introduction
+# MAGIC ### 2 Model Experimentation
+# MAGIC Thanks for continuing on the IOT Distributed Pandas walkthrough! If you haven't run the previous notebook, you'll need the resulting data so go ahead and choose your catalog and give it a "Run All" before returning to this notebook. Be sure to select the same catalog in your configuration here. If you're anxious to distribute Pandas operations and want to save the MLops for later, you can skip to notebook 4.</br></br>
+# MAGIC
+# MAGIC In this notebook, we'll walk through how to use MLflow to track ML experiments more effectively. You'll work through how to log models, metrics, parameters, and other ML artifacts as well as how to promote the best model to Production to be used downstream.
 
 # COMMAND ----------
 
 # DBTITLE 1,Run Setup
 from utils.iot_setup import get_config
-config = get_config(spark)
+config = get_config(spark, catalog='default')
 
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC Now that we've explored our data and added some features in the previous notebook, let's train some models to predict defects! First, we'll split the data into train/test
+# MAGIC Let's train some models to predict defects! First, we'll split the data into train/test
 
 # COMMAND ----------
 
@@ -30,20 +33,21 @@ X_train.head()
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC # MLflow Experiments
+# MAGIC ### MLflow Experiments
 # MAGIC Next we'll try a few different approaches to predicting defects. In order to track the results we'll use MLflow _Experiments_. An Experiment allows you to track and compare many attempts to solve a problem. Each attempt is called a _run_
 
 # COMMAND ----------
 
 # DBTITLE 1,Run MLflow Experiment
 import pandas as pd
-import mlflow.sklearn
+import mlflow
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import f1_score, recall_score
 from mlflow.models.signature import infer_signature
 import uuid
 import matplotlib.pyplot as plt
 
+mlflow.set_experiment(config['ml_experiment_path'])
 model_name = f"rf_{config['model_name']}"
 
 with mlflow.start_run(run_name='First Run RF') as run:
@@ -126,9 +130,9 @@ with mlflow.start_run(run_name='Second Run RF') as run:
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC Our F1 score dropped, but recall improved! We may need to balance the two based on a cost-benefit analysis moving forward, but luckily we're tracking all of our runs and can select the model that turns out to be the best fit later!
+# MAGIC Likely, your F1 score dropped but recall improved! We may need to balance the two based on a cost-benefit analysis moving forward, but luckily we're tracking all of our runs and can select the model that turns out to be the best fit later.
 # MAGIC
-# MAGIC Let's try one more time, this time using MLflow's autolog() capability to log the model and numerous defaults without adding extra code
+# MAGIC Let's try one more time, this time using MLflow's autolog() capability to log the model and numerous other defaults without adding extra code
 
 # COMMAND ----------
 
@@ -146,8 +150,8 @@ predictions = lr.predict(X_test)
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC # Model Registry
-# MAGIC Now that we've had a chance to compare three models, let's determine the best one and add it to the model registry for downstream use
+# MAGIC ### Model Registry
+# MAGIC Now that we've had a chance to compare three models, let's determine the best one and add it to the model registry for downstream use. In our example we'll simply query the run with the highest recall. However, since you can use the MLflow client, you could create a custom metric for more robust automatic selection of a run.
 
 # COMMAND ----------
 
