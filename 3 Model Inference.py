@@ -59,8 +59,8 @@ def make_predictions(microbatch_df, batch_id):
 # DBTITLE 1,Run Streaming Inference
 (
   feature_data_stream.writeStream
-  .format("delta")
-  .option("checkpointLocation", config['checkpoint_location'])
+  .format('delta')
+  .option('checkpointLocation', config['checkpoint_location'])
   .foreachBatch(make_predictions) # run our prediction function on each microbatch
   .trigger(availableNow=True) # if you want to run constantly and constantly check for new data, comment out this line
   .queryName(f'stream_to_{config["predictions_table"]}') # use this for discoverability in the Spark UI

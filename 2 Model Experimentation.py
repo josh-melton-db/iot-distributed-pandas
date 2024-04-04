@@ -69,12 +69,12 @@ with mlflow.start_run(run_name='First Run RF') as run:
 
     # Log feature importances plot
     importance = (pd.DataFrame(list(zip(X_train.columns, rf.feature_importances_)), 
-                               columns=["Feature", "Importance"])
+                               columns=['Feature', 'Importance'])
                   .sort_values("Importance", ascending=False))
     fig, ax = plt.subplots()
     importance.plot.bar(x='Feature', ax=ax)
     plt.title("Feature Importances")
-    mlflow.log_figure(fig, "feature_importances.png")
+    mlflow.log_figure(fig, 'feature_importances.png')
 
 # COMMAND ----------
 
@@ -120,12 +120,12 @@ with mlflow.start_run(run_name='Second Run RF') as run:
 
     # Log feature importances plot
     importance = (pd.DataFrame(list(zip(X_train.columns, rf.feature_importances_)), 
-                               columns=["Feature", "Importance"])
+                               columns=['Feature', 'Importance'])
                   .sort_values("Importance", ascending=False))
     fig, ax = plt.subplots()
     importance.plot.bar(x='Feature', ax=ax)
-    plt.title("Feature Importances")
-    mlflow.log_figure(fig, "feature_importances.png")
+    plt.title('Feature Importances')
+    mlflow.log_figure(fig, 'feature_importances.png')
 
 # COMMAND ----------
 
@@ -159,13 +159,13 @@ predictions = lr.predict(X_test)
 from mlflow.tracking import MlflowClient
 client = MlflowClient()
 
-runs = client.search_runs(run.info.experiment_id, order_by=["metrics.recall DESC"])
+runs = client.search_runs(run.info.experiment_id, order_by=['metrics.recall DESC'])
 lowest_f1_run_id = runs[0].info.run_id
 
 # COMMAND ----------
 
 # DBTITLE 1,Register Model
-model_uri = f"runs:/{lowest_f1_run_id}/model"
+model_uri = f'runs:/{lowest_f1_run_id}/model'
 model_details = mlflow.register_model(model_uri=model_uri, name=config['model_name'])
 
 # COMMAND ----------
@@ -179,7 +179,7 @@ model_details = mlflow.register_model(model_uri=model_uri, name=config['model_na
 client.transition_model_version_stage(
     name=config['model_name'],
     version=model_details.version,
-    stage="Production"
+    stage='Production'
 )
 
 # COMMAND ----------

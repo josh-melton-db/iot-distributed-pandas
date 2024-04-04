@@ -3,14 +3,14 @@
 # MAGIC ### 1 Data Exploration
 # MAGIC Welcome to Distributed Pandas for IOT Anomaly Detection! These notebooks will walk you through several approaches to running single node processes more efficiently (in parallel) on Databricks. This notebook outlines how to run existing Pandas commands, with some extra goodies from the Databricks notebook UI. This notebook is a prerequisite to the others.</br></br>
 # MAGIC
-# MAGIC For our first step, we'll install the correct libraries, run the setup, and read our data. You can run cells via the UI or the "shift+enter" hotkey. See the instructions above or in the RUNME for any challenges
+# MAGIC For our first step, we'll install the correct libraries, run the setup, and read our data. You can run cells via the UI or the "shift+enter" hotkey. See the instructions in the RUNME for more detail about configuration.
 
 # COMMAND ----------
 
 # DBTITLE 1,Run Setup
 from utils.iot_setup import get_config, reset_tables, generate_iot, dgconfig
 
-config = get_config(spark, catalog="default") # Update catalog or schema arguments to change the data location
+config = get_config(spark, catalog='default') # Update catalog or schema arguments to change the data location
 reset_tables(spark, config, dbutils, drop_schema=True) 
 iot_data = generate_iot(spark, dgconfig) # Update dgconfig['shared']['num_rows'] to change the generated data volume
 iot_data.write.mode('overwrite').saveAsTable(config['bronze_table'])
@@ -19,7 +19,7 @@ iot_data.write.mode('overwrite').saveAsTable(config['bronze_table'])
 
 # MAGIC %md
 # MAGIC #Pandas on Databricks
-# MAGIC You can convert the spark dataframe to a pandas dataframe quite easily by using the toPandas() function. Pandas is a single node processing library so we'll start with analysis of one device to reduce the data volume before discussing how to apply pandas in parallel
+# MAGIC You can convert the spark dataframe to a pandas dataframe quite easily by using the toPandas() function. Pandas is a single node processing library so we'll start with analysis of one device to reduce the data volume before discussing how to apply pandas in parallel in notebook 4
 
 # COMMAND ----------
 
