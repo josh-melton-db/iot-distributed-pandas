@@ -127,7 +127,7 @@ features_arima.display()
 # DBTITLE 1,Evaluate ARIMA
 from pyspark.ml.evaluation import RegressionEvaluator
 
-evaluator = RegressionEvaluator(predictionCol="predicted_temp", labelCol="temperature", metricName="rmse")
+evaluator = RegressionEvaluator(predictionCol='predicted_temp', labelCol='temperature', metricName='rmse')
 rmse = evaluator.evaluate(features_arima)
 rmse
 
@@ -167,12 +167,12 @@ print(objective({'p': 1, 'd': 1, 'q': 1}), objective({'p': 1, 'd': 2, 'q': 0}))
 from hyperopt import fmin, tpe, hp # , SparkTrials
 
 # Define search space. Many possibilities, but Hyperopt identifies the best combinations to try
-search_space = {'p': hp.quniform('p', 0, 3, 1),
+search_space = {'p': hp.quniform('p', 0, 2, 1),
                 'd': hp.quniform('d', 0, 3, 1),
                 'q': hp.quniform('q', 0, 4, 1)}
 
 # Run intelligent hyperparameter search over the search space
-# Use trials=SparkTrials() if your code isn't already distributed
+# You can use trials=SparkTrials() if your code isn't already distributed
 # This may take a few minutes - you can reduce max_evals to finish faster
 argmin = fmin(fn=objective, space=search_space, algo=tpe.suggest, max_evals=16)
 print('Optimal hyperparameters: ', argmin)
@@ -266,7 +266,7 @@ class FeaturesAndPredictionModel(mlflow.pyfunc.PythonModel):
     def predict(self, context, model_input):
         output = self.generate_features(model_input)
         if self.defect_model: # If there's a model, return predictions. Otherwise, just return generated features
-            features = output[rf_model.feature_names_in_]
+            features = output[self.defect_model.feature_names_in_]
             output['prediction'] = self.defect_model.predict(features)
         return output 
 
@@ -277,7 +277,7 @@ ohe_list = [column for column in features_arima.columns if 'ohe' in column]
 optimal_order = (int(argmin['p']), int(argmin['d']), int(argmin['q']))
 combo_model = FeaturesAndPredictionModel(None, optimal_order, ohe_list)
 
-raw = spark.read.table(config['bronze_table']).limit(5000).toPandas()
+raw = spark.read.table(config['bronze_table']).limit(100).toPandas()
 features = combo_model.generate_features(raw)
 model = combo_model.train_model(features)
 combo_model.defect_model = model
@@ -292,6 +292,59 @@ display(custom_model.predict(raw)) # test that our model works for feature gener
 
 # MAGIC %md
 # MAGIC We could also use a [Spark UDF](https://mlflow.org/docs/latest/python_api/mlflow.pyfunc.html#mlflow.pyfunc.spark_udf) to call our model in parallel, like what's automatically shown in the MLflow Run Artifacts Tab, or use the distributed Pandas approaches from above to distribute the feature generation in the exact same way
+# MAGIC
+# MAGIC # Nested MLflow models
+# MAGIC Try reading the entire dataset and displaying the fault rate per model_id. The defect rates are different for each model_id - maybe we should consider training different ML models to make sure our predictions are aligned to the factors at play for each type of device (model_id) rather than making a very generalized ML model for all model_ids?
+# MAGIC
+# MAGIC This is a great scenario for our experimentation to be nested (and is why we didn't worry about parallelizing the custom model above - yet). We want to create a different ML model for each model of engine to account for their different relationships to our features. Let's try logging multiple runs within a parent run, while each model is trained in parallel.
+
+# COMMAND ----------
+
+def single_model_run(pdf: pd.DataFrame) -> pd.DataFrame:
+    run_id = pdf["run_id"].iloc[0]
+    model_id = pdf["model_id"].iloc[0]
+    n_used = pdf.shape[0]
+    with mlflow.start_run(run_id=run_id) as outer_run:  # Set the top level run
+        experiment_id = outer_run.info.experiment_id    # and nest the inner runs
+        with mlflow.start_run(run_name=model_id, nested=True, experiment_id=experiment_id) as inner_run:
+            model_specific_ml = FeaturesAndPredictionModel(None, optimal_order, ohe_list)
+            features = model_specific_ml.generate_features(pdf.drop('run_id', axis=1))
+            model_specific_ml.defect_model = model_specific_ml.train_model(features)
+            mlflow.pyfunc.log_model(f'combo_model_{model_id}', python_model=model_specific_ml, input_example=features.head()) 
+            mlflow.set_tag('model_id', model_id)
+            return_df = pd.DataFrame([[model_id, inner_run.info.run_id, n_used]], columns=["model_id", "run_id", "n_used"])
+    return return_df
+
+train_return_schema = "model_id string, run_id string, n_used int"
+
+bronze_df = spark.read.table(config['bronze_table'])
+
+with mlflow.start_run(run_name="Device Specific Models") as run:
+    model_info = (
+        bronze_df
+        .withColumn("run_id", lit(run.info.run_id)) # Pass in run_id
+        .groupby("model_id")
+        .applyInPandas(single_model_run, train_return_schema)
+    )
+model_info.display()
+
+# COMMAND ----------
+
+from mlflow.pyfunc import PythonModel
+
+class OriginDelegatingModel(PythonModel):
+    def __init__(self, model_map):
+        self.model_map = model_map
+    
+    def predict(self, model_input):
+        model_id = model_input.iloc[0]['model_id']
+        model = self.model_map.get(model_id)
+        return model.predict(model_input)
+
+model_map = {row['model_id']: mlflow.pyfunc.load_model(f'runs:/{row["run_id"]}/combo_model_{row["model_id"]}')
+             for row in model_info.collect()}
+inference_model = OriginDelegatingModel(model_map)
+inference_model.predict(bronze_df.drop('defect').sample(.01).toPandas())
 
 # COMMAND ----------
 
