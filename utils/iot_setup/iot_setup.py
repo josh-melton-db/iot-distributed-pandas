@@ -2,7 +2,7 @@ import random
 import datetime
 import sys
 
-def get_config(spark, catalog=None, schema='iot_distributed_pandas'):
+def get_config(spark, catalog='default', schema='iot_distributed_pandas'):
     current_user = spark.sql('select current_user()').collect()[0][0].split('@')[0].replace('.', '_')
     username = spark.sql("SELECT current_user()").first()['current_user()'] 
     if not catalog:
