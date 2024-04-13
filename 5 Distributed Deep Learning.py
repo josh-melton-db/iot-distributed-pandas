@@ -109,7 +109,7 @@ class Autoencoder(pl.LightningModule):
         self.decoder = nn.Sequential(
             nn.Linear(latent_dim, hidden_size),
             nn.ReLU(),
-            nn.Linear(hidden_size, input_size),
+            nn.Linear(hidden_size, 1), # Predicting just one class
             nn.Sigmoid()  # Ensure input features are scaled between 0 and 1
         )
 
@@ -122,17 +122,18 @@ class Autoencoder(pl.LightningModule):
         target = batch[self.target_column].float()
         features = torch.stack([batch[key] for key in batch.keys() if key != self.target_column], dim=1).float()
         features = torch.clamp(features, 0, 1)
-        reconstructed = self(features)
-        reconstructed = reconstructed.view_as(features)
-        if not torch.all(target.ge(0) & target.le(1)):
-            raise ValueError("All elements of target should be between 0 and 1")
-        
-        loss = F.binary_cross_entropy(reconstructed, features)
+        predictions = self(features).squeeze()        
+        loss = F.binary_cross_entropy(predictions, target)
         self.log('train_loss', loss, on_step=True, on_epoch=True, logger=True)
         return loss
 
     def configure_optimizers(self):
         return torch.optim.Adam(self.parameters(), lr=0.001)
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC During our model training, we'll want to monitor the progress of the model optimizing against our loss function. We can use MLflow to track our experiment, register models, and run inference in the same way as our other models.
 
 # COMMAND ----------
 
