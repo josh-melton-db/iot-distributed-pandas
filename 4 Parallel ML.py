@@ -2,7 +2,7 @@
 # MAGIC %md
 # MAGIC ### 4 Parallel Pandas ML Techniques
 # MAGIC
-# MAGIC Finally, the crux of what we set out to do - in this notebook, we'll outline how to distribute an end-to-end ML pipeline that uses all the libraries we're used to.
+# MAGIC Finally, the crux of what we set out to do - in this notebook, we'll tour some approaches for distributing an end-to-end ML pipeline that uses all the libraries we're used to. While some of these implementation details, could be handled by out of the box Databricks tools such as Feature Store, we hope the various examples it contains provide valuable patterns and insights into how to scale your ML Pipelines.
 
 # COMMAND ----------
 
@@ -135,7 +135,7 @@ rmse
 
 # MAGIC %md
 # MAGIC ### Hyperparameter tuning
-# MAGIC Now we've seen how to run ARIMA in parallel on a large dataset, but we haven't determined which hyperparameters (the "order" parameter) gives the best ARIMA model for our use case. We can explore the correct hyperparameters by using hyperopt, a framework where we can minimize the output of some function given a parameter space to explore as input. In our case, we'll turn the prediction and rmse calculations into our objective function, and use hyperopt to automatically and intelligently explore many values for the "order" hyperparameters.
+# MAGIC Now we've seen how to run ARIMA in parallel on a large dataset, but we haven't determined which hyperparameters (the "order" parameter) gives the best ARIMA model for our use case. We can explore the correct hyperparameters by using hyperopt, a framework where we can minimize the output of some function given a parameter space to explore as input. In our case, we'll use rmse as the output of our objective function, and use hyperopt to automatically and intelligently explore many values for the "order" hyperparameters as the input to our objective function.
 
 # COMMAND ----------
 
@@ -205,7 +205,7 @@ mlflow.sklearn.autolog(disable=True)
 
 # MAGIC %md
 # MAGIC ### Custom MLflow Model
-# MAGIC Sometimes, logging models from default libraries doesn't cut it. For these cases we can use an MLflow [PythonModel](https://mlflow.org/docs/latest/python_api/mlflow.pyfunc.html#class-based-model) to define custom logic that provides value on top of standard out of the box models. For example, by logging the feature logic along with our model we mitigate a lot of potential headaches in productionization, such as online/offline skew. In this example, ensuring that our ARIMA model gets the appropriate optimal_order parameter also means we can create features in the same way our model was trained on. </br></br>
+# MAGIC Sometimes, logging models from default libraries doesn't cut it. For these cases we can use an MLflow [PythonModel](https://mlflow.org/docs/latest/python_api/mlflow.pyfunc.html#class-based-model) to define custom logic that provides value on top of standard out of the box models. For example, by logging the feature logic along with our model we mitigate a lot of potential headaches in productionization, such as online/offline skew. In this example, ensuring that our ARIMA model gets the appropriate optimal_order parameter also means we can create features in the same way our model was trained on. We can consider this pattern as a useful example for distributing existing code, but for new use cases please note the robust functionality provided by [Feature Store](https://docs.databricks.com/en/machine-learning/feature-store/index.html) and [MLops Stacks](https://docs.databricks.com/en/machine-learning/mlops/mlops-stacks.html). </br></br>
 # MAGIC
 # MAGIC Let's tie everything together from this notebook and log it all as a custom model in MLflow and use it to generate features and make predictions
 
@@ -291,12 +291,12 @@ display(custom_model.predict(raw)) # test that our model works for feature gener
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC We could also use a [Spark UDF](https://mlflow.org/docs/latest/python_api/mlflow.pyfunc.html#mlflow.pyfunc.spark_udf) to call our model in parallel, like what's automatically shown in the MLflow Run Artifacts Tab, or use the distributed Pandas approaches from above to distribute the feature generation in the exact same way
+# MAGIC We could also use a [Spark UDF](https://mlflow.org/docs/latest/python_api/mlflow.pyfunc.html#mlflow.pyfunc.spark_udf) to call our model in parallel, like what's automatically shown in the MLflow Run Artifacts Tab, or use the distributed Pandas approaches from above to distribute the feature generation in the exact same way. 
 # MAGIC
 # MAGIC # Nested MLflow models
-# MAGIC Try reading the entire dataset and displaying the fault rate per model_id. The defect rates are different for each model_id - maybe we should consider training different ML models to make sure our predictions are aligned to the factors at play for each type of device (model_id) rather than making a very generalized ML model for all model_ids?
+# MAGIC If you try displaying our dataset and visualize the fault rate per model_id, you'll notice that the defect rates are different for each model_id - maybe we should consider training different ML models to make sure our predictions are aligned to the factors at play for each type of device (model_id) rather than making a very generalized ML model for all model_ids?
 # MAGIC
-# MAGIC This is a great scenario for our experimentation to be nested (and is why we didn't worry about parallelizing the custom model above - yet). We want to create a different ML model for each model of engine to account for their different relationships to our features. Let's try logging multiple runs within a parent run, while each model is trained in parallel.
+# MAGIC This is a great scenario for our experimentation to be nested (and is why we didn't worry about parallelizing the custom model above). We want to create a different ML model for each type of engine to account for their different relationships to our features. Let's try logging multiple runs within a parent run, while each model is trained in parallel.
 
 # COMMAND ----------
 
