@@ -47,6 +47,7 @@ from mlflow.models.signature import infer_signature
 import uuid
 import matplotlib.pyplot as plt
 
+mlflow.set_registry_uri("databricks-uc")
 mlflow.set_experiment(config['ml_experiment_path'])
 model_name = f"rf_{config['model_name']}"
 
@@ -151,7 +152,7 @@ predictions = lr.predict(X_test)
 
 # MAGIC %md
 # MAGIC ### Model Registry
-# MAGIC Now that we've had a chance to compare three models, let's determine the best one and add it to the model registry for downstream use. In our example we'll simply query the run with the highest recall. However, since you can use the MLflow client, you could create a custom metric for more robust automatic selection of a run.
+# MAGIC Now that we've had a chance to compare three models, let's determine the best one and add it to the model registry for downstream use. With Unity Catalog, our models are governed in the same way as all our other data objects. In this example we'll simply query the run with the highest recall, but using the results of the MLflow client you could create a custom metric for more robust automatic selection of the "best" run.
 
 # COMMAND ----------
 
@@ -171,16 +172,12 @@ model_details = mlflow.register_model(model_uri=model_uri, name=config['model_na
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC Once we feel confident in our model's predictions, we can change the stage to Staging or Production so downstream consumers can use it. As we'll see in the next notebook, if we want to change to different model libraries our downstream consumers will be able to seamlessly continue to use the model
+# MAGIC Once we feel confident in our model's predictions, we can change the alias to Staging or Production so downstream consumers can use it. As we'll see in the next notebook, if we change model libraries or dependencies our downstream consumers will still be able to seamlessly to use the model for predictions
 
 # COMMAND ----------
 
 # DBTITLE 1,Transition to Production
-client.transition_model_version_stage(
-    name=config['model_name'],
-    version=model_details.version,
-    stage='Production'
-)
+client.set_registered_model_alias(config['model_name'], 'Production', model_details.version)
 
 # COMMAND ----------
 

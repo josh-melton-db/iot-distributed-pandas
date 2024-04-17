@@ -21,10 +21,10 @@ config = get_config(spark, catalog='default')
 
 # DBTITLE 1,Make Predictions
 import mlflow
+mlflow.set_registry_uri("databricks-uc")
 
 feature_data = spark.read.table(config['silver_features']).toPandas()
-
-model_uri = f'models:/{config["model_name"]}/Production'
+model_uri = f'models:/{config["model_name"]}@Production'
 production_model = mlflow.pyfunc.load_model(model_uri)
 feature_data['predictions'] = production_model.predict(feature_data)
 display(feature_data)
@@ -62,7 +62,7 @@ def make_predictions(microbatch_df, batch_id):
   .format('delta')
   .option('checkpointLocation', config['checkpoint_location'])
   .foreachBatch(make_predictions) # run our prediction function on each microbatch
-  .trigger(availableNow=True) # if you want to run constantly and constantly check for new data, comment out this line
+  .trigger(availableNow=True) # if you want to run in real time, comment out this line
   .queryName(f'stream_to_{config["predictions_table"]}') # use this for discoverability in the Spark UI
   .start()
 ).awaitTermination()
